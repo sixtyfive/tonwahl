@@ -1,5 +1,5 @@
 /* Programm für ATtiny25
- * „h#s“ Henrik Haftmann, TU Chemnitz, 31. März 2009 - 8. Oktober 2015
+ * „h#s“ Henrik Haftmann, TU Chemnitz, 31. März 2009 - 6. Dezember 2017
  * tabsize = 8, encoding = utf-8 (ohne Windows-Header BOM)
  */
 #include <avr/io.h>
@@ -16,8 +16,6 @@ FUSES={
  0xFF,	// Keine Selbstprogrammierung
 };
 
-// #define FILTER	// Rufnummern-Filter aktivieren
-
 /************
  * Hardware *
  ************/
@@ -25,42 +23,42 @@ FUSES={
 Verwendung der Ports:
 PB0	(5)	PCINT0	Wählscheiben-Kontakt "nsi", 1 = unterbrochen
 PB1	(6)	OC1A	PWM-Tonausgang, reichlich (250 kHz) Trägerfrequenz
-PB2	(7)	PCINT2	Erdtaste (wie Shift-Taste), 0 = gedrückt
+PB2	(7)	PCINT2	Wählscheiben-Kontakt "nsa", 1 = betätigt
 PB3	(2)	XIN	Quarz
 PB4	(3)	XOUT	Quarz
 PB5	(1)	!RESET	frei
 
 Es ist viel schwieriger, einen Adapter zum Zwischenschalten
 (ohne Modifikation des Telefonapparates) zu bauen.
-Der Wählscheiben-Kontakt "nsa" wird nicht benötigt.
+Es wird keine Erdtaste benötigt.
 
 Der EEPROM des AVR ermöglicht das Abspeichern von Nummern zur Kurzwahl.
-Funktion:
- 1. Ein-Finger-Bedienung
- Kurzwahl: Erde (kurz) - Ziffer
- Kurzwahl speichern: Erde (lang) - Rufnummer - Erde - Ziffer
- 2. Zwei-Finger-Bedienung
- Wahlwiederholung: Erde + "1"
- Speichern der zuletzt gewählten Nummer: Erde + "2" - Ziffer
- Kurzwahl speichern (wie oben): Erde + "3" - Rufnummer - Erde - Ziffer
- Sonderzeichen senden:	Erde + "4..7" -> A..D
-			Erde + "8" -> *
-			Erde + "9" -> #
- Letzte Rufnummer löschen: Erde + "0"
+Sonderfunktionen:
+ LANG am Finger-Anschlag halten (bis zum ersten Piep):
+  1..9,0 = Kurzwahl
+ LANG×2 am Finger-Anschlag halten (bis zum zweiten Piep):
+  1 = Wahlwiederholung
+  2 = Speichern der zuletzt gewählten Rufnummer (Ziffer folgt)
+  3 = Speichern einer neuen Rufnummer (Nummer folgt, dann LANG + Ziffer)
+  4..7 = "A".."D" wählen
+  8 = "*" wählen
+  9 = "#" wählen
+  0 = Letzte Rufnummer löschen (= Wahlwiederholung verhindern)
 
-Rufnummern-Filter:
- Alles was extra Geld kostet (Handy, Sonderrufnummern, Ausland; gültig für Deutschland):
- 00	Ausland
- 01	Dienste (0180), Handys, Call-By-Call
- 070	Private Nummern (nie gesehen)
- 090	Premium-Dienste (0900)
- 118	Telefonauskunft
-Der Filter ist nicht beim Speichern oder Wählen einer Kurzwahl wirksam!
-Daher lassen sich bestimmte Nummern im Kurzwahlspeicher ablegen.
-0800 ist erst mal nicht gesperrt; kann trotzdem (bei VoIP) Geld kosten - weiß nicht.
+Folgende interne Peripherie wird verwendet:
+Ports: 2 Eingabe mit Pull-Up, 1 Ausgabe via Hardware-PWM
+Timer 0: Frequenzsynthese = Stetige PWM-Änderung für Timer 1
+Timer 1: High-Speed-Timer mit 64-MHz-PLL: Hardware-PWM-Ausgabe, nur mono
+Totzeitgenerator: ungenutzt
+Taktgenerator: Als Quarzoszillator mit bei Bedarf zugeschalteter High-Speed-PLL
+Power-Management: Einfacher Sleep-Modus, CPU-Taktdrosselung ÷256 wenn keine PWM läuft
+Analog-Digital-Wandler, Analogvergleicher: ungenutzt
+Interrupts: Nur einer: Zählerüberlauf Timer 0
+EEPROM: Als Nummernspeicher für Kurzwahl und Wahlwiederholung
+Flash-Selbstprogrammierung: ungenutzt
 */
 
-// Signal-Zeiten
+// Signal-Zeiten in Sekunden
 #define TON 0.14
 #define PAUSE 0.06
 
@@ -89,19 +87,19 @@ PROGMEM const BYTE SinTab[256]={
 #define FREQ(x) ((x)*256.0*65536/F_CPU+0.5)
 // DDS-Inkremente = Additionswerte auf Phasenwert alle F_CPU/256
 PROGMEM const WORD Frequencies[16] = {
- // NTSC-Trägerfrequenz (3,579545 MHz) durch:
- FREQ( 697),	// 5135,6
- FREQ( 770),	// 4648,8
- FREQ( 852),	// 4201,3
- FREQ( 941),	// 3804
- FREQ(1209),	// 2960,7
- FREQ(1336),	// 2679,3
- FREQ(1477),	// 2423,5
- FREQ(1633),	// 2192
- FREQ(1000),	// c (auf 1 kHz transponiert)
- FREQ(1122),	// d
- FREQ(1260),	// e
- FREQ(1333)};	// f (Halbtonschritt)
+		//NTSC-Trägerfrequenz (3,579545 MHz) durch:
+ FREQ( 697),	//5135,6
+ FREQ( 770),	//4648,8
+ FREQ( 852),	//4201,3
+ FREQ( 941),	//3804
+ FREQ(1209),	//2960,7
+ FREQ(1336),	//2679,3
+ FREQ(1477),	//2423,5
+ FREQ(1633),	//2192
+ FREQ(1000),	//c (auf 1 kHz transponiert)
+ FREQ(1122),	//d
+ FREQ(1260),	//e
+ FREQ(1333)};	//f (Halbtonschritt)
 
 // Funktionsprinzip: DDS
 volatile register WORD addA	asm("r8");
@@ -109,20 +107,19 @@ volatile register WORD phaA	asm("r10");	// hoher Ton
 volatile register WORD addB	asm("r12");
 volatile register WORD phaB	asm("r14");	// tiefer Ton
 
-volatile register BYTE buf_r	asm("r7");   // Puffer-Lesezeiger
-volatile register BYTE buf_w	asm("r6");   // Puffer-Schreibzeiger
-volatile register BYTE nsi_cnt	asm("r5"); // Nummernschaltkontakt
-volatile register BYTE nsi_len	asm("r4"); // Nummernschaltkontakt
-volatile register BYTE ckey	asm("r3");	   // Nummernschaltkontakt
-volatile register BYTE Ton	asm("r2");	   // Rest-Ton/Pausenlänge, in ~ 3 ms
-#define Teiler GPIOR0			  // Software-Taktteiler
-#define Flags GPIOR1			  // diverse Bits
-#define Zeit8 GPIOR2			  // Zeitzähler zum Detektieren eines Erdtastendrucks
+volatile register BYTE buf_r	asm("r7");	// Puffer-Lesezeiger
+volatile register BYTE buf_w	asm("r6");	// Puffer-Schreibzeiger
+volatile register BYTE nsi	asm("r5");	// Nummernschaltkontakt
+volatile register BYTE ckey	asm("r3");	// Nummernschaltkontakt
+volatile register BYTE Ton	asm("r2");	// Rest-Ton/Pausenlänge, in ~ 3 ms
+#define Flags GPIOR0			// diverse Bits
+#define Teiler GPIOR1			// Software-Taktteiler
+#define Zeit8 GPIOR2			// Zeitzähler für nsa
 
-static WORD Zeit16;			    // Zeitzähler zum Abspeichern der letzten Rufnummer
+static WORD Zeit16;	// Zeitzähler zum Abspeichern der letzten Rufnummer (für Wahlwiederholung)
 
-static char numbers[32];		// Puffer für Wählziffern - 15 od. 20 für attiny25, 30 für attiny85
-                            // sowie '*'=14, '#'=15, wie im EEPROM-Kurzwahlspeicher
+static char numbers[22];		// Puffer für Wählziffern
+// '*'=14, '#'=15, wie im EEPROM-Kurzwahlspeicher
 
 /* EEPROM-Kurzwahlspeicher (256 Bytes eines ATtiny45):
 11 Blöcke {
@@ -171,6 +168,7 @@ static void eewrite(void) {
 
 // 12 Bytes Puffer pro Nummer (22 Ziffern)
 // Beim ATtiny25 bei der Kurzwahl "0" nur 8 Bytes (14 Ziffern)
+// idx zwischen 0 (letzte Nummer) und 10 (Kurzwahl 0)
 static void KurzSpeichern(BYTE idx) {
  eewait();
  EEARL=(idx<<3)+(idx<<2);	// max. 22 Stellen (24 Nibbles = 12 Bytes)
@@ -206,102 +204,64 @@ static void KurzLaden(BYTE idx) {
 
 static void StartTon(char z);
 
-#ifdef FILTER
-static void __attribute__((noreturn)) block(void) {
- StartTon(19);			// Ton des Todes
- for(;;) {
-  Teiler=Ton=255;	// immer tönen, kein Weiterwählen
-  sleep_cpu();		// keine Hauptschleife mehr
- }
-}
-#else
-static void block(void) {}	// sollte der Compiler rauswerfen
-#endif
-
-// Nummernschaltkontakt-Auswertung, Aufruf mit F_CPU/65536 = 208 Hz
+// Nummernschaltkontakt-Auswertung, Aufruf mit F_CPU/65536 = 264 Hz
+// (Wenn Ton läuft dann häufiger, mit 977 Hz)
 static void NSK(void) {
- BYTE key = ~PINB;
- if (key&4) {			// Erdtaste extra entprellen mit 4-Bit-Zähler
-  if ((Flags&0xF0)!=0xF0) {Flags+=0x10; key&=~4;}	// Zähler noch nicht am Anschlag: Tastendruck zurücknehmen
- }else{
-  if (Flags&0xF0) {Flags-=0x10; key|=4;}		// Zähler noch nicht unten: Tastendruck wiederherstellen
- }
- ckey ^= key;			// gesetztes Bit bei Änderung
- if (ckey&4) {
-  if (key&4) {
-   if (Flags&8) {		// Umschalten auf's Einschreiben (wie Shift+2)
-    Flags&=~8;			// Wählunterdrückung weg
-    Flags|=4;			// ... auch eine Wählunterdrückung
-    StartTon(19);
-   }
-  }else{  // Erdtaste losgelassen?
-   if (Flags&2) Flags&=~2;	// Hatte Shift-Funktion? Shift weg!
-   else if (!(Flags&0x0C)) {
-    Flags|=1;			// Sonst danach Kurzwahl
-    StartTon(17);		// tönen lassen
-   }
+ BYTE key = PINB;
+ ckey ^= key;		// gesetztes Bit bei Änderung
+ if (ckey&4) {	
+  if (!(key&4)) {	// nsa betätigt? (Start Nummernscheibe aufziehen)
+   nsi=0;
    Zeit8=0;
-  }
- }
- if (key&4 && !(Flags&2)) {
-  if (!++Zeit8) {
-   Flags|=8;			// Kurzwahlnummer ohne zu wählen als nächstes eingeben (= Wählunterdrückung!)
-   StartTon(16);
-  }
- }
- if (ckey&1) {			// nsi (Nummernschalter)
-  if (key&4) Flags|=2;		// Shift-Funktion entdeckt
-  if (key&1) {			// nsi geschlossen!
-   nsi_len = 1;			// Zeitmessung starten
-  }else{			// nsi geöffnet?
-   nsi_cnt++;			// Anzahl der Öffnungen zählen
-  }
- }else if (key&1 && nsi_len) {	// Zeitmessung?
-  nsi_len++;
-  if (nsi_len>=(BYTE)(0.2*F_CPU/65536)) {	// 2 Schrittzeiten?
-   if (key&4) switch (nsi_cnt) {
+   Flags&=~3;		// Etappenzähler für „nsa halten“ rücksetzen
+  }else if (nsi) {	// nsa losgelassen? (Nummernscheibe abgelaufen)
+// Eigentliche Aktion
+   if (Flags&4) {	// nsi = Ziffer zum Kurzwahl-Speichern
+    KurzSpeichern(nsi);
+    Flags=0;
+    StartTon(19);
+    goto raus;		// nicht wählen
+   }else if (Flags&2) switch (nsi) {	// LANG×2 = Ganz langes Halten am Fingeranschlag
     case 10: buf_r=buf_w=0; KurzSpeichern(0); goto raus;	// Wahlwiederholung verhindern
-    case 1: KurzLaden(0); goto raus;
-    case 2: Flags|=4; StartTon(19); goto raus;
-    case 3: Flags|=8; StartTon(16); goto raus;	// wie langes Drücken auf Erde
-    default: nsi_cnt+=10-4;	// *,#,A,B,C,D wählen
-   }else if (Flags&4) {
-    KurzSpeichern(nsi_cnt);
-    Flags&=~4;
-    StartTon(16);
-    goto raus;			// nicht wählen
-   }else if (Flags&1) {
-    KurzLaden(nsi_cnt);		// wählen
-    Flags&=~1;
+    case 1: KurzLaden(0); goto raus;		// Wahlwiederholung
+    case 2: Flags=4; StartTon(19); goto raus;	// Letzte Nummer speichern: Ziffer folgt
+    case 3: Flags=8; buf_r=buf_w=0; StartTon(16); goto raus;	// Nummer einspeichern: Nummer + Ziffer folgen
+    default: nsi+=10-4;		// A,B,C,D,*,# wählen
+   }else if (Flags&1) {		// LANG
+    KurzLaden(nsi);		// wählen lassen (1..10), Hauptschleife generiert Töne
     goto raus;
-   }else if (nsi_cnt==10) nsi_cnt=0;
-   if (buf_w==1 && numbers[0]==0 && (nsi_cnt==0 || nsi_cnt==1)) block();	// 00 (Ausland), 01 (Sonderrufnummern, Handys)
-   if (buf_w==2 && numbers[0]==0 && (numbers[1]==9 || numbers[1]==7) && nsi_cnt==0) block();	// 090 (Premium-Dienste), 070 (Rufumleitung)
-   if (buf_w==2 && numbers[0]==1 && numbers[1]==1 && nsi_cnt==8) block();	// 118 (Auskunft)
-   PutBuf(nsi_cnt);		// Zählergebnis abspeichern
+   }else if (nsi==10) nsi=0;
+   PutBuf(nsi);		// Zählergebnis abspeichern (Hauptschleife generiert Ton anschließend)
    if (Flags&8) {
-    buf_r=buf_w;		// Nicht wählen
+    buf_r=buf_w;	// Nicht wählen (Hauptschleife nicht in Aktion treten lassen)
     StartTon(18);
-   }
-   else Zeit16=5*F_CPU/65536;	// Wahlwiederholungs-Abspeicher-TimeOut setzen (5 Sekunden)
-raus:
-   nsi_len = nsi_cnt = 0;
+   }else Zeit16=5*F_CPU/65536;	// Wahlwiederholungs-Abspeicher-TimeOut setzen (5 Sekunden)
+raus:;
   }
+ }else if (!(key&4)) {
+  if (!++Zeit8) {
+   if (!(Flags&2)) ++Flags;	// Zu lange gehalten: ignorieren, weiterpiepen
+   if (Flags&8) Flags=14;	// Einspeicher-Modus? Umschalten zum Abspeichern wie LANG×2 + 2
+   StartTon(15+(Flags&3));	// Ton 16 oder 17 
+  }
+ }
+ if (ckey&1 && key&1) {	// nsi (Nummernschalter) gerade geöffnet?
+  nsi++;			// Anzahl der Öffnungen zählen
+  Zeit8=0;			// Zeitmessung für nsa verhindern
  }
  ckey = key;
 }
 
-// Aufruf mit 20 MHz/256 = 78,125 kHz
+// Kernroutine der Frequenzsynthese oder Sprachausgabe
+// Aufruf mit F_CPU/256 ≈ 65 kHz
 ISR(TIM0_OVF_vect) {
 // Tonlänge nominell 70 ms, Pause 30 ms
-// Bei 20 MHz sind das 5469 bzw. 2344 ISR-Aufrufe.
-// Durch 256 geteilt sind's handliche 21 bzw. 9.
 // Ton>=0 = Tonausgabe, sonst Pause
  if (Ton>=(BYTE)(PAUSE*F_CPU/65536)) {
 #if 0
   BYTE a=pgm_read_byte(SinTab+((phaA+=addA)>>8));
   BYTE b=pgm_read_byte(SinTab+((phaB+=addB)>>8));
-  OCR1A=a+b-(b>>2);		// hier ohne Runden
+  OCR0A=a+b-(b>>2);		// hier ohne Runden
 #else
   asm(
 "	add	r10,r8	\n"
@@ -330,6 +290,7 @@ ISR(TIM0_OVF_vect) {
  }
 }
 
+// Aufruf mit F_CPU/64K ≈ 256 Hz
 ISR(_VECTOR(1),ISR_NOBLOCK) {
  if (Ton) --Ton;
  NSK();		// Nummernschaltkontakt-Auswertung
@@ -338,7 +299,7 @@ ISR(_VECTOR(1),ISR_NOBLOCK) {
 
 PROGMEM const BYTE Nr2HiLo[20]={
 //  0    1    2    3    4    5    6    7    8    9    A    B    C    D    *    #   ..Hinweistöne..
- 0x53,0x40,0x50,0x60,0x41,0x51,0x61,0x42,0x52,0x62,0x70,0x71,0x72,0x73,0x43,0x63,0x8F,0x9F,0xAF,0xBF};
+ 0x53,0x40,0x50,0x60,0x41,0x51,0x61,0x42,0x52,0x62,0x70,0x71,0x72,0x73,0x43,0x63,0x88,0x99,0xAA,0xBB};
 // High-Nibble  4  5  6  7
 // Low-Nibble ┌───────────
 //	    0 │ 1  2  3  A
@@ -346,7 +307,7 @@ PROGMEM const BYTE Nr2HiLo[20]={
 //	    2 │ 7  8  9  C
 //	    3 │ *  0  #  D
 
-// Startet Ton für Ziffer z ("*"=14, "#"=15)
+// Startet Ton für Ziffer z ("*"=14, "#"=15, Hinweistöne nur 1 Sinus)
 static void StartTon(char z) {
  if ((BYTE)z>=20) return;	// sollte nie vorkommen
  if (CLKPR) {
@@ -358,6 +319,7 @@ static void StartTon(char z) {
  BYTE i=pgm_read_byte(Nr2HiLo+z);		// umrechnen in die 2 Frequenzen
  addA=pgm_read_word(Frequencies+(i>>4));	// hoher Ton im High-Nibble
  addB=pgm_read_word(Frequencies+(i&15));	// tiefer Ton im Low-Nibble
+ phaA=phaB;
  if (!PLLCSR) {
   PLLCSR|=0x02;
   _delay_us(100);
@@ -382,11 +344,10 @@ static void hardwareInit(void) {
  DIDR0 = 0x3A;		// diese digitalen Eingänge nicht nutzen
  TCCR0B= 0x01;		// Timer0: Vorteiler 1
  TIMSK = 0x02;		// Überlauf-Interrupt
- ckey = ~PINB;		// einlesen
- nsi_len = nsi_cnt = 0;	// alle übrigen Register nullsetzen
- buf_w = buf_r = 0;
+ ckey  = 0x04;		// nsi geschlossen, nsa geöffnet annehmen
+ buf_w = buf_r = 0;	// alle übrigen Register nullsetzen
  Ton = 0;
- Flags = Zeit8 = 0;
+ Flags = 0;
 }
 
 int __attribute__((noreturn)) main(void) {
@@ -399,7 +360,7 @@ slow:
  CLKPR=0x80;
  CLKPR=0x08;			// Taktteiler /256 (~ 64 kHz)
  sei();
- for(;;) {		// Hauptschleife
+ for(;;) {			// Hauptschleife
   sleep_cpu();
   if (Ton) continue;		// Ton- oder Pausenausgabe läuft
   if (buf_r==buf_w) goto slow;	// Puffer leer, nichts zu tun

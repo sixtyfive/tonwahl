@@ -1,55 +1,42 @@
-# Makefile f�r das Projekt MFV-W�hlscheibe
-# (Schaltung zum Einbau in alte Telefone,
-# erm�glicht Tonwahl trotz Fingerlochscheibe
-# sowie programmierbare Kurzwahl
-# (10 Nummern � 30 Ziffern)
-# Bei ATtiny25 sollte auf 15 oder 20 Ziffern gestutzt werden
+# Makefile für das Projekt MFV-Wählscheibe
+# Für avr-gcc; ich benutze WinAVR 2010.
+# Erstellen mit "make", programmieren mit avrpp mit "make program".
+# Schaltung zum Einbau in alte Telefone,
+# ermöglicht Tonwahl trotz Fingerlochscheibe
+# sowie programmierbare Kurzwahl (10 Nummern à 22 Ziffern)
+# Diese Version (mfv3.c) kommt ohne Erdtaste aus;
+# die Sonderfunktionen werden durch langes Halten der Wählscheibe am Fingeranschlag erreicht.
+# Für AVR-Mikrocontroller (DEVICE) ATtiny25, ATtiny45 oder ATtiny85.
+# Für Quarzfrequenzen (F_CPU) zwischen 10 und 20 MHz.
 
-PROJECT = mfv2
-DEVICE  = attiny85
-TOOLPREFIX = /opt/arduino/hardware/tools/avr
-COMPILE = $(TOOLPREFIX)/bin/avr-gcc -Os -mmcu=$(DEVICE) \
-					  -DF_CPU=16000000 # 16.00000 MHz
-          # -DF_CPU=17280000 # 17.28000 MHz
-          # -DF_CPU=14318180 # 14.31818 MHz
-					# -Wall # Geht mir auf die Nerven
-AVROBJCOPY = $(TOOLPREFIX)/bin/avr-objcopy
-AVRSIZE = $(TOOLPREFIX)/bin/avr-size
-AVROBJDUMP = $(TOOLPREFIX)/bin/avr-objdump
-AVRDUDE = $(TOOLPREFIX)/bin/avrdude -C$(TOOLPREFIX)/etc/avrdude.conf -v -pattiny85 -cusbasp -Pusb
+DEVICE  = attiny25
+F_CPU   = 14318180
+COMPILE = avr-gcc -Wall -Os -mmcu=$(DEVICE) -DF_CPU=$(F_CPU)
 
-all: $(PROJECT).hex size disasm
+all: $(F_CPU).elf size disasm
 
-disasm: $(PROJECT).lst
+hex: $(F_CPU).hex
+disasm: $(F_CPU).lst
 
-$(PROJECT).elf: mfv2.c
+$(F_CPU).elf: mfv3.c
 	$(COMPILE) -o $@ $<
 
-%.hex: $(PROJECT).elf
-	# Mit fuses und signatur
-	# avr-objcopy -j .text -j .data -j .fuse -j .signature -O ihex $< $@
-	#
-	# Ohne fuses und signatur - fuses werden im avrdude-Aufruf mitgegeben
-	$(AVROBJCOPY) -j .text -j .data -O ihex $< $@  
+%.hex: $(F_CPU).elf
+	avr-objcopy -j .text -j .data -j .eeprom -j .fuse -j .signature -O ihex $< $@
 
-size: $(PROJECT).elf
+size: $(F_CPU).elf
 	@echo
-	@$(AVRSIZE) -C --mcu=$(DEVICE) $<
+	@avr-size -C --mcu=$(DEVICE) $<
 
-%.lst: $(PROJECT).elf
-	$(AVROBJDUMP) -d $< > $@
+%.lst: $(F_CPU).elf
+	avr-objdump -d $< > $@
 
 .PHONY: clean program fuse flash
 clean:
-	-rm -rf $(PROJECT).elf $(PROJECT).lst $(PROJECT).hex
+	-rm -rf *.elf *.lst
 
-# Nicht installiert...
-# program: $(PROJECT).hex
-# 	avrpp -8 -ff $<
+program: $(F_CPU).elf
+	avrpp -8 -ff $<
 
-flash: $(PROJECT).hex
-	# Nicht installiert...
-	#	avrpp -8 $<
-	#
-	# Mit fuses! (s.o.)
-	$(AVRDUDE) -U lfuse:w:0x5F:m -U hfuse:w:0xD5:m flash:w:$(PROJECT).hex:i
+flash: $(F_CPU).elf
+	avrpp -8 $<
