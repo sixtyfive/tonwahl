@@ -4,7 +4,7 @@
 # Schaltung zum Einbau in alte Telefone,
 # ermöglicht Tonwahl trotz Fingerlochscheibe
 # sowie programmierbare Kurzwahl (10 Nummern à 22 Ziffern)
-# Diese Version (mfv3.c) kommt ohne Erdtaste aus;
+# Diese Version (ursprünglich mfv3.c) kommt ohne Erdtaste aus;
 # die Sonderfunktionen werden durch langes Halten der Wählscheibe am Fingeranschlag erreicht.
 # Für AVR-Mikrocontroller (DEVICE) ATtiny25, ATtiny45 oder ATtiny85.
 # Für Quarzfrequenzen (F_CPU) zwischen 10 und 20 MHz.
@@ -18,7 +18,7 @@ all: $(F_CPU).elf size disasm
 hex: $(F_CPU).hex
 disasm: $(F_CPU).lst
 
-$(F_CPU).elf: mfv3.c
+$(F_CPU).elf: mfv.c
 	$(COMPILE) -o $@ $<
 
 %.hex: $(F_CPU).elf
