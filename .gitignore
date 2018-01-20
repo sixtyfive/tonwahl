@@ -1,3 +1,5 @@
 *.elf 
 *.lst
 *.hex
+.pioenvs
+.piolibdeps
