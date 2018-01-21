@@ -21,8 +21,8 @@ F_CPU   = 16000000
 # installiert werden (20.1.2018). Unter Windows muss WinAVR genutzt
 # werden, welches allerdings anscheinend veraltete Versionen dieser
 # drei Projekte nutzt.
-COMPILE = avr-gcc -w -Os -mmcu=$(DEVICE) -DF_CPU=$(F_CPU)
-PROGRAM = avrdude -v -p$(DEVICE)
+AVR_GCC = avr-gcc -w -Os -mmcu=$(DEVICE) -DF_CPU=$(F_CPU)
+AVRDUDE = avrdude -v -p$(DEVICE)
 
 all: $(F_CPU).elf size disasm hex
 
@@ -30,7 +30,7 @@ hex: $(F_CPU).hex
 disasm: $(F_CPU).lst
 
 $(F_CPU).elf: mfv.c
-	$(COMPILE) -o $@ $<
+	$(AVR_GCC) -o $@ $<
 
 # Projekt ist wie oben angegeben gedacht zum Programmieren mittels
 # `avrpp` (*nicht* AVRpp sondern ein Teil von avrxtool32; siehe
@@ -45,7 +45,7 @@ $(F_CPU).elf: mfv.c
 # unten das Objekt `.fuse` entfernt, so dass die .hex-Datei nur
 # noch die verbleibenden gelisteten Objekte enthält.
 %.hex: $(F_CPU).elf
-	avr-objcopy -j .text -j .data -j .eeprom -j .signature -O ihex $< $@
+	avr-objcopy -j .text -j .data -O ihex $< $@
 
 # Befehl funktioniert *ausschliesslich* wenn binutils mit
 # https://raw.githubusercontent.com/embecosm/winavr/master/patches/binutils/2.19/30-binutils-2.19-avr-size.patch
@@ -62,15 +62,17 @@ size: $(F_CPU).elf
 clean:
 	-rm -rf *.elf *.lst *.hex
 
-# Fuses for Arduino bootloader (safe):
+# Fuses für Arduino-Bootloader:
 # - low:      0xE2
 # - high:     0xD7
 # - extended: 0xFF
 # (int. osc., 8 MHz, startup time: 6 CK/14CK + 64ms - def. /
 #  preserve EEPROM through erase, serial program downloading /
 #  SUT0, CKSEL3, CKSEL2, CKSEL0, SPIEN, EESAVE)
-#
-# Fuses set by original Makefile:
+fuse-reset:
+	$(AVRDUDE) -U lfuse:w:0xE2:m -U hfuse:w:0xD7:m
+
+# Fuses wie im ursprünglichen Makefile:
 # - low:      0x5F
 # - high:     0xD5
 # - extended: 0xFF
@@ -79,7 +81,7 @@ clean:
 #  program downloading /
 #  CKDIV8, SUT1, SPIEN, EESAVE, BODLEVEL1)
 fuse:
-	$(PROGRAM) -U lfuse:w:0x5F:m -U hfuse:w:0xD5:m
+	$(AVRDUDE) -U lfuse:w:0x5F:m -U hfuse:w:0xD5:m
 
 flash: $(F_CPU).hex
-	$(PROGRAM) flash:w:$(F_CPU).hex:i
+	$(AVRDUDE) -U flash:w:$(F_CPU).hex:i
