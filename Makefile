@@ -60,8 +60,24 @@ size: $(F_CPU).elf
 
 .PHONY: clean fuse flash
 clean:
-	-rm -rf *.elf *.lst
+	-rm -rf *.elf *.lst *.hex
 
+# Fuses for Arduino bootloader (safe):
+# - low:      0xE2
+# - high:     0xD7
+# - extended: 0xFF
+# (int. osc., 8 MHz, startup time: 6 CK/14CK + 64ms - def. /
+#  preserve EEPROM through erase, serial program downloading /
+#  SUT0, CKSEL3, CKSEL2, CKSEL0, SPIEN, EESAVE)
+#
+# Fuses set by original Makefile:
+# - low:      0x5F
+# - high:     0xD5
+# - extended: 0xFF
+# (ext. crystal, 8 MHz, startup time: 16K CK/14CK + 0ms /
+#  divide clock by 8 internally, preserver EEPROM through erase, serial
+#  program downloading /
+#  CKDIV8, SUT1, SPIEN, EESAVE, BODLEVEL1)
 fuse:
 	$(PROGRAM) -U lfuse:w:0x5F:m -U hfuse:w:0xD5:m
 
