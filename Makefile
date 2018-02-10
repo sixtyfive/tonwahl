@@ -9,7 +9,7 @@
 # Für AVR-Mikrocontroller (DEVICE) ATtiny25, ATtiny45 oder ATtiny85.
 # Für Quarzfrequenzen (F_CPU) zwischen 10 und 20 MHz.
 
-DEVICE  = attiny25
+DEVICE  = attiny85
 F_CPU   = 16000000
 
 # Keine Warnungen, da der Quelltext unter GCC 7.2 ohnehin zwei Dutzend

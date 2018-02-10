@@ -11,9 +11,9 @@
 #include <avr/signature.h>
 
 FUSES={
- 0x5F, // Taktteiler /8, kein Taktausgang, Startup=16398CK, Quarzoszillator ≥ 8 MHz
- 0xD5, // RESET, EEPROM-Inhalt behalten, Brownout bei 2,7 V
- 0xFF, // Keine Selbstprogrammierung
+  0x5F, // Taktteiler /8, kein Taktausgang, Startup=16398CK, Quarzoszillator ≥ 8 MHz
+  0xD5, // RESET, EEPROM-Inhalt behalten, Brownout bei 2,7 V
+  0xFF, // Keine Selbstprogrammierung
 };
 
 /************
@@ -310,7 +310,7 @@ PROGMEM const BYTE Nr2HiLo[20]={
 
 // Startet Ton für Ziffer z ("*"=14, "#"=15, Hinweistöne nur 1 Sinus)
 static void StartTon(char z) {
-  if ((BYTE)z>=20) return;  // sollte nie vorkommen
+  if ((BYTE)z>=20) return; // sollte nie vorkommen
   if (CLKPR) {
     cli();
     CLKPR=0x80;
